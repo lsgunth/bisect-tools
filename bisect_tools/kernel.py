@@ -48,14 +48,16 @@ class Kernel(object):
 
         logger.info("Kernel installed in %s", self.tftp_path)
 
-    def git(self, *cmd, check=True, stdout=sp.PIPE):
+    def git(self, *cmd, check=True, stdout=sp.PIPE, stderr=None):
         logger.debug("Git Command: git %s", " ".join(cmd))
         return sp.run(["git", "-C", str(self.kernel_path)] + list(cmd),
-                      check=check, stdout=stdout, universal_newlines=True)
+                      check=check, stdout=stdout, stderr=stderr,
+                      universal_newlines=True)
 
     def describe(self):
         ret = self.git("describe")
         return ret.stdout.strip()
 
     def bisect_log(self, log_file):
-        self.git("bisect", "log", stdout=log_file.open("w"))
+        self.git("bisect", "log", stdout=log_file.open("w"),
+                 stderr=sp.STDOUT, check=False)
