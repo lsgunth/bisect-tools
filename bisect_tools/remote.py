@@ -75,6 +75,9 @@ class Remote(object):
             except RemoteWaitDownTimeout:
                 self.ipmi_reboot("reset")
 
+            if not self.boot_event.wait(90):
+                self.ipmi_reboot("reset")
+
         if not self.boot_event.wait(3*60):
             self.ipmi_reboot("cycle")
             if not self.boot_event.wait(5*60):
