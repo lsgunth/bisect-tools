@@ -55,6 +55,7 @@ class Remote(object):
                       universal_newlines=True)
 
     def reboot(self):
+        logger.info("Rebooting host")
         self.pxe_boot()
         self.command("/lib/molly-guard/reboot", check=False)
 
@@ -69,7 +70,7 @@ class Remote(object):
         if kind not in ["soft", "reset", "cycle"]:
             raise ValueError("Invalid reboot type")
 
-        logger.debug("Reboot: %s", kind)
+        logger.info("IPMI Reboot: %s", kind)
         sp.run(self.ipmi_args + ["chassis", "power", kind], check=True)
 
     def is_host_up(self):
