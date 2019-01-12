@@ -131,10 +131,10 @@ class Remote(object):
             raise RemoteWaitDownTimeout()
 
     def wait_for_host_up(self, *args, **kwargs):
-        logger.info("Waiting for host to go up")
+        logger.info("Waiting for host to boot")
         up = self._wait_for_host(expect=True, *args, **kwargs)
         if not up:
-            logger.info("Timed out waiting for host to go up")
+            logger.info("Timed out waiting for host to boot")
             raise RemoteWaitUpTimeout()
 
     def kernel_version(self):
