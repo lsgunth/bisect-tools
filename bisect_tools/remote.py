@@ -66,6 +66,8 @@ class Remote(object):
         self.command("/lib/molly-guard/reboot", check=False)
 
     def reboot_wait(self):
+        self.boot_event.clear()
+
         if not self.is_host_up():
             self.ipmi_reboot("reset")
         else:
