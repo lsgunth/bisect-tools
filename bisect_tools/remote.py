@@ -1,11 +1,19 @@
 # SPDX-License-Identifier: GPL-2.0
 # Copyright Logan Gunthorpe <logang@deltatee.com>
 
+import os
+import pty
 import time
 import logging
+import threading
 import subprocess as sp
 
 logger = logging.getLogger("remote")
+
+class RemoteMonitorInterrupt(Exception):
+    def __init__(self, line):
+        self.line = line
+        super().__init__("Remote Monitor Interrupt")
 
 class Remote(object):
     def __init__(self, host, ipmi_host, ipmi_username, ipmi_password,
@@ -23,6 +31,9 @@ class Remote(object):
             self.ssh_args += ["-i", str(ssh_id)]
 
         self.reboot_command = reboot_command
+
+        self.intr_line = None
+        self.intr_event = threading.Event()
 
     def pxe_boot(self):
         logger.debug("Set PXE boot")
@@ -58,7 +69,13 @@ class Remote(object):
 
         return ret.returncode == 0
 
+    def interrupt(self, line):
+        self.intr_line = line
+        self.intr_event.set()
+
     def _wait_for_host(self, timeout=None, expect=True):
+
+        self.intr_event.clear()
 
         if timeout is not None:
             end = time.time() + timeout
@@ -70,12 +87,15 @@ class Remote(object):
             if self.is_host_up() == expect:
                 return True
 
-            time.sleep(0.2)
+            if self.intr_event.wait(0.5):
+                logger.info("Found interrupt line")
+                raise RemoteMonitorInterrupt(self.intr_line)
 
     def wait_for_host_down(self, *args, **kwargs):
         self._wait_for_host(expect=False, *args, **kwargs)
 
     def wait_for_host_up(self, *args, **kwargs):
+        logger.info("Waiting for host to go up")
         self._wait_for_host(expect=True, *args, **kwargs)
 
     def kernel_version(self):
@@ -83,3 +103,70 @@ class Remote(object):
         ver = ret.stdout.strip()
         logger.debug("Kernel Version: %s", ver)
         return ver
+
+class RemoteMonitor(threading.Thread):
+    def __init__(self, remote, match, log_file=None):
+        self.remote = remote
+        self.log_file = log_file
+        self.stopped = False
+        self.proc = None
+        self.master = None
+        self.slave = None
+        self.match = match
+        self.silence_event = threading.Event()
+
+        if self.log_file is not None:
+            self.log_file = self.log_file.open("wb")
+
+        super().__init__()
+
+    def deactivate(self):
+        devnull = open(os.devnull, "w")
+        sp.run(self.remote.ipmi_args + ["sol", "deactivate"],
+               stdout=devnull, stderr=devnull)
+
+    def __enter__(self):
+        self.deactivate()
+        self.start()
+        return self
+
+    def __exit__(self, *args):
+        self.stopped = True
+        if self.master:
+            os.write(self.master, b"~.")
+        if self.proc:
+            self.proc.wait(5.0)
+            self.proc.kill()
+        if self.slave:
+            os.close(self.slave)
+        self.deactivate()
+        self.join()
+
+    def run(self):
+        self.master, self.slave = pty.openpty()
+        master = os.fdopen(self.master, "rb")
+        self.proc = sp.Popen(self.remote.ipmi_args + ["sol", "activate"],
+                             stdout=self.slave, stderr=self.slave,
+                             stdin=self.slave)
+
+        while not self.stopped:
+            line = master.readline()
+            if not line:
+                continue
+
+            self.silence_event.set()
+
+            if self.log_file:
+                self.log_file.write(line)
+                self.log_file.flush()
+
+            try:
+                if self.match.search(line.decode()):
+                    self.remote.interrupt(line)
+            except UnicodeDecodeError:
+                pass
+
+    def wait_for_silence(self, silent_time=5.0):
+        logger.info("Waiting for dmesg silence")
+        while self.silence_event.wait(silent_time):
+            self.silence_event.clear()
