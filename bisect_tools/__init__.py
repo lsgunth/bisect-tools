@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: GPL-2.0
 # Copyright Logan Gunthorpe <logang@deltatee.com>
 
-from .remote import Remote, RemoteMonitor, RemoteMonitorInterrupt
+from .remote import Remote, RemoteMonitor, RemoteMonitorInterrupt, \
+	RemoteWaitUpTimeout, RemoteWaitDownTimeout
 from .kernel import Kernel
 
+import sys
 import logging
 from pathlib import Path
 
@@ -25,3 +27,16 @@ def log_path(kernel, path=Path(".")):
                   logging.StreamHandler()])
 
     return ret
+
+logger = logging.getLogger("bisect")
+def bisect_good():
+    logger.info("Good")
+    sys.exit(0)
+
+def bisect_bad():
+    logger.info("Bad")
+    sys.exit(1)
+
+def bisect_stop():
+    logger.info("Unknown")
+    sys.exit(-1)

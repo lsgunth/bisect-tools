@@ -15,6 +15,12 @@ class RemoteMonitorInterrupt(Exception):
         self.line = line
         super().__init__("Remote Monitor Interrupt")
 
+class RemoteWaitUpTimeout(Exception):
+    pass
+
+class RemoteWaitDownTimeout(Exception):
+    pass
+
 class Remote(object):
     def __init__(self, host, ipmi_host, ipmi_username, ipmi_password,
                  ssh_user="root", ssh_id=None, ssh_port=22,
@@ -54,7 +60,10 @@ class Remote(object):
 
     def reboot_wait(self):
         self.reboot()
-        self.wait_for_host_down()
+        try:
+            self.wait_for_host_down(timeout=20)
+        except RemoteWaitDownTimeout:
+            self.ipmi_reboot("reset")
 
     def ipmi_reboot(self, kind="soft"):
         if kind not in ["soft", "reset", "cycle"]:
@@ -77,7 +86,7 @@ class Remote(object):
         self.intr_line = line
         self.intr_event.set()
 
-    def _wait_for_host(self, timeout=None, expect=True):
+    def _wait_for_host(self, timeout=5*60, expect=True):
 
         self.intr_event.clear()
 
@@ -96,11 +105,17 @@ class Remote(object):
                 raise RemoteMonitorInterrupt(self.intr_line)
 
     def wait_for_host_down(self, *args, **kwargs):
-        self._wait_for_host(expect=False, *args, **kwargs)
+        down = self._wait_for_host(expect=False, *args, **kwargs)
+        if not down:
+            logger.info("Timed out waiting for host to go down")
+            raise RemoteWaitDownTimeout()
 
     def wait_for_host_up(self, *args, **kwargs):
         logger.info("Waiting for host to go up")
-        self._wait_for_host(expect=True, *args, **kwargs)
+        up = self._wait_for_host(expect=True, *args, **kwargs)
+        if not up:
+            logger.info("Timed out waiting for host to go up")
+            raise RemoteWaitUpTimeout()
 
     def kernel_version(self):
         ret = self.command("uname", "-r")
