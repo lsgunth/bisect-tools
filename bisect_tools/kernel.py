@@ -47,3 +47,12 @@ class Kernel(object):
                     str(self.tftp_path))
 
         logger.info("Kernel installed in %s", self.tftp_path)
+
+    def git(self, *cmd, check=True):
+        logger.debug("Git Command: git %s", " ".join(cmd))
+        return sp.run(["git", "-C", str(self.kernel_path)] + list(cmd),
+                      check=check, stdout=sp.PIPE, universal_newlines=True)
+
+    def describe(self):
+        ret = self.git("describe")
+        return ret.stdout.strip()
