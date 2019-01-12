@@ -3,7 +3,7 @@
 
 from .remote import Remote, RemoteMonitor, RemoteMonitorInterrupt, \
 	RemoteWaitUpTimeout, RemoteWaitDownTimeout, RemoteRebootFailure
-from .kernel import Kernel
+from .kernel import Kernel, KernelPatch
 
 import sys
 import logging

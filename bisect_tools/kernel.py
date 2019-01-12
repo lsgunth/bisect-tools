@@ -58,6 +58,27 @@ class Kernel(object):
         ret = self.git("describe")
         return ret.stdout.strip()
 
+    def checkout(self, treeish):
+        self.git("checkout", treeish, stderr=sp.STDOUT)
+
+    def cherry_pick(self, tree_range):
+        self.git("cherry-pick", tree_range)
+
     def bisect_log(self, log_file):
         self.git("bisect", "log", stdout=log_file.open("w"),
                  stderr=sp.STDOUT, check=False)
+
+class KernelPatch(object):
+    def __init__(self, kernel, patch):
+        self.kernel = kernel
+        self.patch = patch
+        self.start = None
+
+    def __enter__(self):
+        self.start = self.kernel.describe()
+        self.kernel.cherry_pick(self.patch)
+        return self
+
+    def __exit__(self, *args):
+        if self.start is not None:
+            self.kernel.checkout(self.start)
