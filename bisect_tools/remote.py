@@ -35,14 +35,18 @@ class Remote(object):
         self.intr_line = None
         self.intr_event = threading.Event()
 
+        self.devnull = open(os.devnull, "w")
+
     def pxe_boot(self):
         logger.debug("Set PXE boot")
-        sp.run(self.ipmi_args + ["chassis", "bootdev", "pxe"], check=True)
+        sp.run(self.ipmi_args + ["chassis", "bootdev", "pxe"],
+               check=True, stdout=self.devnull, stderr=self.devnull)
 
     def command(self, *cmd, check=True):
         logger.debug("Remote Command: %s", " ".join(cmd))
         return sp.run(self.ssh_args + list(cmd), check=check,
-                      stdout=sp.PIPE, universal_newlines=True)
+                      stdout=sp.PIPE, stderr=self.devnull,
+                      universal_newlines=True)
 
     def reboot(self):
         self.pxe_boot()
@@ -121,7 +125,7 @@ class RemoteMonitor(threading.Thread):
         super().__init__()
 
     def deactivate(self):
-        devnull = open(os.devnull, "w")
+        devnull = self.remote.devnull
         sp.run(self.remote.ipmi_args + ["sol", "deactivate"],
                stdout=devnull, stderr=devnull)
 
