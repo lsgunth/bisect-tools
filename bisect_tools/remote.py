@@ -2,6 +2,7 @@
 # Copyright Logan Gunthorpe <logang@deltatee.com>
 
 import os
+import re
 import pty
 import time
 import logging
@@ -19,6 +20,9 @@ class RemoteWaitUpTimeout(Exception):
     pass
 
 class RemoteWaitDownTimeout(Exception):
+    pass
+
+class RemoteRebootFailure(Exception):
     pass
 
 class Remote(object):
@@ -41,6 +45,8 @@ class Remote(object):
         self.intr_line = None
         self.intr_event = threading.Event()
 
+        self.boot_event = threading.Event()
+
         self.devnull = open(os.devnull, "w")
 
     def pxe_boot(self):
@@ -60,18 +66,28 @@ class Remote(object):
         self.command("/lib/molly-guard/reboot", check=False)
 
     def reboot_wait(self):
-        self.reboot()
-        try:
-            self.wait_for_host_down(timeout=20)
-        except RemoteWaitDownTimeout:
+        if not self.is_host_up():
             self.ipmi_reboot("reset")
+        else:
+            self.reboot()
+            try:
+                self.wait_for_host_down(timeout=60)
+            except RemoteWaitDownTimeout:
+                self.ipmi_reboot("reset")
+
+        if not self.boot_event.wait(3*60):
+            self.ipmi_reboot("cycle")
+            if not self.boot_event.wait(5*60):
+                raise RemoteRebootFailure()
 
     def ipmi_reboot(self, kind="soft"):
         if kind not in ["soft", "reset", "cycle"]:
             raise ValueError("Invalid reboot type")
 
         logger.info("IPMI Reboot: %s", kind)
-        sp.run(self.ipmi_args + ["chassis", "power", kind], check=True)
+        self.pxe_boot()
+        sp.run(self.ipmi_args + ["chassis", "power", kind], check=True,
+               stdout=self.devnull, stderr=self.devnull)
 
     def is_host_up(self):
         ret = sp.run(["nc", "-z", self.host, str(self.ssh_port), "-w", "1"])
@@ -125,6 +141,8 @@ class Remote(object):
         return ver
 
 class RemoteMonitor(threading.Thread):
+    boot_re = re.compile("\[    0.000000\] Linux version")
+
     def __init__(self, remote, match, log_file=None):
         self.remote = remote
         self.log_file = log_file
@@ -180,11 +198,13 @@ class RemoteMonitor(threading.Thread):
                 self.log_file.write(line)
                 self.log_file.flush()
 
-            try:
-                if self.match.search(line.decode()):
-                    self.remote.interrupt(line)
-            except UnicodeDecodeError:
-                pass
+            line = line.decode("ascii", "ignore")
+            if self.match.search(line):
+                self.remote.interrupt(line)
+
+            if self.boot_re.search(line):
+                logger.info("Kernel is booting")
+                self.remote.boot_event.set()
 
     def wait_for_silence(self, silent_time=5.0):
         logger.info("Waiting for dmesg silence")

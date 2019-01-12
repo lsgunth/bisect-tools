@@ -2,7 +2,7 @@
 # Copyright Logan Gunthorpe <logang@deltatee.com>
 
 from .remote import Remote, RemoteMonitor, RemoteMonitorInterrupt, \
-	RemoteWaitUpTimeout, RemoteWaitDownTimeout
+	RemoteWaitUpTimeout, RemoteWaitDownTimeout, RemoteRebootFailure
 from .kernel import Kernel
 
 import sys
