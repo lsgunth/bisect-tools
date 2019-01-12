@@ -143,7 +143,7 @@ class Remote(object):
 class RemoteMonitor(threading.Thread):
     boot_re = re.compile("\[    0.000000\] Linux version")
 
-    def __init__(self, remote, match, log_file=None):
+    def __init__(self, remote, match=None, log_file=None):
         self.remote = remote
         self.log_file = log_file
         self.stopped = False
@@ -157,6 +157,9 @@ class RemoteMonitor(threading.Thread):
             self.log_file = self.log_file.open("wb")
 
         super().__init__()
+
+    def set_match(self, match):
+        self.match = match
 
     def deactivate(self):
         devnull = self.remote.devnull
@@ -199,7 +202,7 @@ class RemoteMonitor(threading.Thread):
                 self.log_file.flush()
 
             line = line.decode("ascii", "ignore")
-            if self.match.search(line):
+            if self.match is not None and self.match.search(line):
                 self.remote.interrupt(line)
 
             if self.boot_re.search(line):
